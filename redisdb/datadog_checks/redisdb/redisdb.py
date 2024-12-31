@@ -12,6 +12,7 @@ import redis
 
 from datadog_checks.base import AgentCheck, ConfigurationError, ensure_unicode, is_affirmative
 from datadog_checks.base.utils.common import round_value
+from datadog_checks.redisdb.aws import ElastiCacheIAMProvider
 
 DEFAULT_MAX_SLOW_ENTRIES = 128
 MAX_SLOW_ENTRIES_KEY = "slowlog-max-len"
@@ -122,6 +123,12 @@ class Redis(AgentCheck):
         self.collect_client_metrics = is_affirmative(self.instance.get('collect_client_metrics', False))
         if ("host" not in self.instance or "port" not in self.instance) and "unix_socket_path" not in self.instance:
             raise ConfigurationError("You must specify a host/port couple or a unix_socket_path")
+        self.password = self.instance.get('password', '')
+        self.cloud_metadata = {}
+        aws = self.instance.get('aws', {})
+        if aws:
+            aws['managed_authentication'] = self._aws_managed_authentication(aws, self.password)
+            self.cloud_metadata.update({'aws': aws})
 
     def get_library_versions(self):
         return {"redis": redis.__version__}
@@ -142,6 +149,21 @@ class Redis(AgentCheck):
             return default
 
     @staticmethod
+    def _aws_managed_authentication(aws, password):
+        if 'managed_authentication' not in aws:
+            # for backward compatibility
+            # if managed_authentication is not set, we assume it is enabled if region is set and password is not set
+            managed_authentication = {}
+            managed_authentication['enabled'] = 'region' in aws and not password
+        else:
+            managed_authentication = aws['managed_authentication']
+            enabled = is_affirmative(managed_authentication.get('enabled', False))
+            if enabled and 'region' not in aws:
+                raise ConfigurationError('AWS region must be set when using AWS managed authentication')
+            managed_authentication['enabled'] = enabled
+        return managed_authentication
+
+    @staticmethod
     def _generate_instance_key(instance_config):
         if 'unix_socket_path' in instance_config:
             return instance_config.get('unix_socket_path'), instance_config.get('db')
@@ -153,36 +175,54 @@ class Redis(AgentCheck):
         key = self._generate_instance_key(instance_config)
 
         if no_cache or key not in self.connections:
-            try:
-                # Only send useful parameters to the redis client constructor
-                list_params = [
-                    'host',
-                    'port',
-                    'db',
-                    'username',
-                    'password',
-                    'socket_timeout',
-                    'connection_pool',
-                    'charset',
-                    'errors',
-                    'unix_socket_path',
-                    'ssl',
-                    'ssl_certfile',
-                    'ssl_keyfile',
-                    'ssl_ca_certs',
-                    'ssl_cert_reqs',
-                ]
+            # Only send useful parameters to the redis client constructor
+            list_params = [
+                'host',
+                'port',
+                'db',
+                'username',
+                'password',
+                'socket_timeout',
+                'connection_pool',
+                'charset',
+                'errors',
+                'unix_socket_path',
+                'ssl',
+                'ssl_certfile',
+                'ssl_keyfile',
+                'ssl_ca_certs',
+                'ssl_cert_reqs',
+            ]
 
-                # Set a default timeout (in seconds) if no timeout is specified in the instance config
-                instance_config['socket_timeout'] = instance_config.get('socket_timeout', 5)
-                connection_params = {k: instance_config[k] for k in list_params if k in instance_config}
-                # If caching is disabled, we overwrite the dictionary value so the old connection
-                # will be closed as soon as the corresponding Python object gets garbage collected
-                self.connections[key] = redis.Redis(**connection_params)
+            # Set a default timeout (in seconds) if no timeout is specified in the instance config
+            instance_config['socket_timeout'] = instance_config.get('socket_timeout', 5)
+            connection_params = {k: instance_config[k] for k in list_params if k in instance_config}
 
-            except TypeError:
-                msg = "You need a redis library that supports authenticated connections. Try `pip install redis`."
-                raise Exception(msg)
+            # Check for AWS IAM auth. Inject a credential_provider if present and properly configured
+            if 'aws' in self.cloud_metadata:
+                # if we are running on AWS, check if IAM auth is enabled and a password is not provided
+                aws_managed_authentication = self.cloud_metadata['aws']['managed_authentication']
+                if aws_managed_authentication['enabled']:
+                    # if IAM auth is enabled, region must be set. Validation is done in the config
+                    region = self.cloud_metadata['aws']['region']
+
+                    # Build a credential_provider
+                    connection_params['credential_provider'] = ElastiCacheIAMProvider(
+                        username=instance_config['username'],
+                        cluster_name=aws_managed_authentication.get('cluster_name'),
+                        region=region,
+                        role_arn=aws_managed_authentication.get('role_arn'),
+                    )
+                    connection_params['decode_responses'] = True
+
+            # Unset 'username' and 'password' values when using a credential_provider for auth
+            if 'credential_provider' in connection_params:
+                connection_params.pop('username', None)
+                connection_params.pop('password', None)
+
+            # If caching is disabled, we overwrite the dictionary value so the old connection
+            # will be closed as soon as the corresponding Python object gets garbage collected
+            self.connections[key] = redis.Redis(**connection_params)
 
         return self.connections[key]
 

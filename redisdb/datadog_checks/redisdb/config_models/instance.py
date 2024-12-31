@@ -19,6 +19,25 @@ from datadog_checks.base.utils.models import validation
 from . import defaults, validators
 
 
+class ManagedAuthentication(BaseModel):
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        frozen=True,
+    )
+    enabled: Optional[bool] = Field(None, examples=[False])
+    role_arn: Optional[str] = Field(None, examples=['arn:aws:iam::123456789012:role/MyRole'])
+
+
+class Aws(BaseModel):
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        frozen=True,
+    )
+    cluster_name: Optional[str] = None
+    managed_authentication: Optional[ManagedAuthentication] = None
+    region: Optional[str] = None
+
+
 class MetricPatterns(BaseModel):
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
@@ -34,6 +53,7 @@ class InstanceConfig(BaseModel):
         arbitrary_types_allowed=True,
         frozen=True,
     )
+    aws: Optional[Aws] = None
     collect_client_metrics: Optional[bool] = None
     command_stats: Optional[bool] = None
     db: Optional[int] = None

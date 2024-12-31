@@ -36,6 +36,8 @@ license = "BSD-3-Clause"
 
 [project.optional-dependencies]
 deps = [
+    "botocore==1.35.10",
+    "cachetools==5.5.0",
     "redis==5.0.8",
 ]
 
