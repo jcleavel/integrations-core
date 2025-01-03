@@ -205,7 +205,7 @@ class Redis(AgentCheck):
                 if aws_managed_authentication['enabled']:
                     # if IAM auth is enabled, region must be set. Validation is done in the config
                     region = self.cloud_metadata['aws']['region']
-                    cluster_name=self.cloud_metadata['aws']['cluster_name']
+                    cluster_name = self.cloud_metadata['aws']['cluster_name']
 
                     # Build a credential_provider
                     credential_provider = ElastiCacheIAMProvider(
