@@ -25,7 +25,9 @@ class ManagedAuthentication(BaseModel):
         frozen=True,
     )
     enabled: Optional[bool] = Field(None, examples=[False])
-    role_arn: Optional[str] = Field(None, examples=['arn:aws:iam::123456789012:role/MyRole'])
+    role_arn: Optional[str] = Field(
+        None, examples=['arn:aws:iam::123456789012:role/MyRole']
+    )
 
 
 class Aws(BaseModel):
@@ -33,7 +35,7 @@ class Aws(BaseModel):
         arbitrary_types_allowed=True,
         frozen=True,
     )
-    cluster_name: Optional[str] = None
+    cache_name: Optional[str] = None
     managed_authentication: Optional[ManagedAuthentication] = None
     region: Optional[str] = None
 

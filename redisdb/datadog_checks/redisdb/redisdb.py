@@ -200,23 +200,26 @@ class Redis(AgentCheck):
 
             # Check for AWS IAM auth. Inject a credential_provider if present and properly configured
             if 'aws' in self.cloud_metadata:
-                # if we are running on AWS, check if IAM auth is enabled and a password is not provided
+                # If we are running on AWS, check if IAM auth is enabled and a password is not provided
                 aws_managed_authentication = self.cloud_metadata['aws']['managed_authentication']
                 if aws_managed_authentication['enabled']:
-                    # if IAM auth is enabled, region must be set. Validation is done in the config
+                    # If IAM auth is enabled, region must be set. Validation is done in the config
                     region = self.cloud_metadata['aws']['region']
-                    cluster_name = self.cloud_metadata['aws']['cluster_name']
+                    cache_name = self.cloud_metadata['aws']['cache_name']
 
                     # Build a credential_provider
                     credential_provider = ElastiCacheIAMProvider(
                         username=instance_config['username'],
-                        cluster_name=cluster_name,
+                        cache_name=cache_name,
                         region=region,
                         role_arn=aws_managed_authentication.get('role_arn'),
                     )
-
                     connection_params['credential_provider'] = credential_provider
-                    connection_params['decode_responses'] = True
+
+                    # Elasticache requires response decoding by default
+                    # Enable it if the user doesn't specify their own value
+                    if 'decode_responses' not in connection_params:
+                        connection_params['decode_responses'] = True
 
             # Unset 'username' and 'password' values when using a credential_provider for auth
             if 'credential_provider' in connection_params:

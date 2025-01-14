@@ -10,9 +10,18 @@ from botocore.useragent import UserAgentString
 from cachetools import TTLCache, cached
 
 class ElastiCacheIAMProvider(redis.CredentialProvider):
-    def __init__(self, username, cluster_name, region="us-west-2", role_arn=None):
+    """
+    This class implements the redis library's CredentialProvider type.
+
+    It manages the AWS client sessions and generates the request signatures required to authenticate
+    with AWS Elasticache instances.
+
+    # This implementation was adapted from the example in the Redis library's documentation.
+    """
+
+    def __init__(self, username, cache_name, region="us-west-2", role_arn=None):
         self.username = username
-        self.cluster_name = cluster_name
+        self.cache_name = cache_name
         self.region = region
 
         session = botocore.session.get_session()
@@ -49,7 +58,7 @@ class ElastiCacheIAMProvider(redis.CredentialProvider):
             'body': {},
             'method': 'GET',
         }
-        prepare_request_dict(request_dict, "https://" + self.cluster_name, user_agent=self.user_agent)
+        prepare_request_dict(request_dict, "https://" + self.cache_name, user_agent=self.user_agent)
 
         signed_url = self.request_signer.generate_presigned_url(
             request_dict,
