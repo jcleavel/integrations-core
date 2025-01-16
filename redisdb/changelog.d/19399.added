@@ -1,0 +1,1 @@
+Add AWS IAM authentication to the `redisdb` integration to support collecting native Redis metrics from AWS Elasticache instances.
